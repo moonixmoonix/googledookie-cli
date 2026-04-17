@@ -3,7 +3,17 @@ import termios
 import tty
 import time
 import os
-from googlesearch import search
+import requests
+import random
+import re
+from bs4 import BeautifulSoup
+from urllib.parse import quote_plus, unquote
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+]
 
 def get_char():
     fd = sys.stdin.fileno()
@@ -22,114 +32,60 @@ def execute_search(query):
         print("\033[H\033[J", end="")
         print(f"\033[95m\033[1m=== EXECUTING SEARCH ===\033[0m")
         print(f"QUERY: \033[94m{query}\033[0m\n")
-        
         results = []
+        headers = {"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "en-US,en;q=0.5"}
         try:
-            for url in search(query, num_results=10):
-                results.append(url)
+            time.sleep(random.uniform(3.0, 6.0))
+            url = f"https://www.google.com/search?q={quote_plus(query)}&gbv=1"
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            for a in soup.find_all('a', href=re.compile(r"^/url\?q=")):
+                link = unquote(a['href'].replace("/url?q=", "").split("&")[0])
+                if link.startswith('http') and 'google.com' not in link:
+                    if link not in results: results.append(link)
         except Exception as e:
-            print(f"Error fetching results: {e}")
-            time.sleep(2)
-            return
-
+            print(f"Error: {e}"); input("\nPress Enter..."); return
         if not results:
-            print("No results found.")
-            time.sleep(2)
-            return
-
-        for i, url in enumerate(results):
-            print(f" [{i+1}] {url}")
-        
-        print(f"\n\033[1m[S] Save to File | [E] Edit Query | [Q] Main Menu\033[0m")
+            print("\033[91mNo results. Solve a CAPTCHA in a browser or check your IP.\033[0m")
+            input("\nPress Enter..."); return
+        for i, url in enumerate(results[:15]): print(f" [{i+1}] {url}")
+        print(f"\n\033[1m[S] Save to File | [E] Edit Query | [Enter] Main Menu\033[0m")
         choice = input("\nAction: ").lower()
-        
         if choice == 's':
-            filename = "dork_results.txt"
-            with open(filename, "a") as f:
-                f.write(f"\n--- QUERY: {query} ---\n")
-                for r in results:
-                    f.write(f"{r}\n")
-            print(f"\033[92mSaved to {filename}!\033[0m")
-            time.sleep(1.5)
+            with open("dork_results.txt", "a") as f:
+                f.write(f"\n--- {query} ---\n")
+                for r in results[:15]: f.write(f"{r}\n")
+            print("Saved!"); time.sleep(1)
         elif choice == 'e':
-            query = input("\nEdit Query: ").strip()
-            continue
-        elif choice == 'q':
-            break
-        else:
-            print("Invalid selection.")
-            time.sleep(1)
+            query = input("\nEdit Query: ").strip(); continue
+        else: break
 
 def handle_c1a1():
     while True:
         print("\033[H\033[J", end="")
-        print(f"\033[95m\033[1m=== DORK INFO: C1A1 - Log Files (Passwords) ===\033[0m\n")
-        print("EXPLANATION: Targets log files that may contain plaintext credentials.\n")
-        user_input = input("Enter search terms (Domain, Org, or App) or 'q' to return: ").strip()
+        print("\033[95m\033[1m=== DORK INFO: C1A1 - Log Files (Passwords) ===\033[0m\n")
+        print("\033[1mEXPLANATION:\033[0m")
+        print("Targets .log files that may contain sensitive data like plaintext passwords,")
+        print("session tokens, or server activity logs accidentally exposed to indexing.\n")
+        print("\033[1mEXAMPLE TARGETS:\033[0m")
+        print(" * domain.com       -> Finds logs specific to a domain")
+        print(" * \"admin\"          -> Finds logs containing administrative actions")
+        print(" * \"error\"          -> Finds error logs which often leak file paths\n")
+        print("\033[1mRESULT EXAMPLES:\033[0m")
+        print(" - http://example.com/logs/security.log")
+        print(" - http://site.com/storage/logs/laravel.log\n")
+        print("\033[94mDORK:\033[0m filetype:log \"password\"\n")
+        user_input = input("Enter search terms or [Enter] for general (Q to quit): ").strip()
         if user_input.lower() == 'q': return
-        elif user_input == "": continue
-        
-        final_dork = f'filetype:log "password" {user_input}'
-        execute_search(final_dork)
+        execute_search(f'filetype:log "password" {user_input}'.strip())
         break
 
-def search_ghdb_keyword():
-    print("\033[H\033[J", end="")
-    print(f"\033[95m\033[1m=== GHDB EXPANDED LIBRARY SEARCH ===\033[0m\n")
-    query = input("Enter search keyword (e.g., 'camera', 'password'): ").strip().lower()
-    if not query: return
-    
-    library = [
-        {"title": "Exposed Webcam / IP Camera", "dork": "inurl:\"view/index.shtml\""},
-        {"title": "Live View Camera Feed", "dork": "inurl:\"/view/view.shtml\""},
-        {"title": "Axis Network Camera Feed", "dork": "intitle:\"live view - axis\""},
-        {"title": "Toshiba Network Camera", "dork": "intitle:\"toshiba network camera\" user"},
-        {"title": "Sony Network Camera (SNC)", "dork": "intitle:\"snc-rz30\""},
-        {"title": "Panasonic IP Camera", "dork": "intitle:\"network camera\" inurl:\"viewerframe\""},
-        {"title": "Mobotix Camera Portal", "dork": "intitle:\"control center\" mobotix"},
-        {"title": "D-Link IP Camera", "dork": "intitle:\"d-link web configuration\""},
-        {"title": "Hikvision Device Login", "dork": "intitle:\"hikvision\" inurl:\"login\""},
-        {"title": "Exposed MySQL Config", "dork": "filename:config.php db_password"},
-        {"title": "WordPress Backup Archive", "dork": "index of /wp-content/backups/"},
-        {"title": "Vulnerable PHPinfo Leak", "dork": "ext:php intitle:phpinfo \"published by the PHP Group\""},
-        {"title": "Publicly Shared .env File", "dork": "filename:.env \"DB_PASSWORD\""},
-        {"title": "Open FTP Root Directory", "dork": "intitle:\"index of\" \"ftp\""},
-        {"title": "Apache Server Status Info", "dork": "server-status \"Apache Server Status\""}
-    ]
-    
-    results = [res for res in library if query in res['title'].lower() or query in res['dork'].lower()]
-    
-    if not results:
-        print(f"\nNo results found for '{query}'.")
-        time.sleep(1.5)
-        return
-
-    current_res = 0
-    while True:
-        print("\033[H\033[J", end="")
-        print(f"\033[95m\033[1m=== GHDB RESULTS FOR: {query} ===\033[0m\n")
-        for i, res in enumerate(results):
-            style = '\033[92m' if i == current_res else ''
-            prefix = " * " if i == current_res else "   "
-            print(f"{style}{prefix}{res['title']} (Dork: {res['dork']})\033[0m")
-        
-        print(f"\n\033[1m[Arrows to Move, Enter to Select, Q to Cancel]\033[0m")
-        key = get_char()
-        if key == '\x1b[A': current_res = (current_res - 1) % len(results)
-        elif key == '\x1b[B': current_res = (current_res + 1) % len(results)
-        elif key == '\r':
-            selected_dork = results[current_res]['dork']
-            target = input("\nEnter Target (Domain/Org) or leave blank: ").strip()
-            final = f"{selected_dork} {target}".strip()
-            execute_search(final)
-            return
-        elif key.lower() == 'q': return
-
 def main():
-    HEADER, HIGHLIGHT, SUB, ENDC, BOLD = '\033[95m', '\033[92m', '\033[94m', '\033[0m', '\033[1m'
+    H, HI, SUB, END, B = '\033[95m', '\033[92m', '\033[94m', '\033[0m', '\033[1m'
     DATA = {
         "C1: Files Containing Juicy Info": ["C1A1: Log Files (Passwords)", "C1A2: Environment Files", "C1A3: AWS Credentials", "C1A4: Config Credentials", "C1A5: SQL Database Dumps", "C1A6: Mail Archives", "C1A7: Password Lists"],
-        "C2: Sensitive Directories / Open Directories": ["C2A1: Basic Index Discovery", "C2A2: Backup Directories", "C2A3: Config/ETC Access", "C2A4: Admin Folders", "C2A5: DCIM / Media", "C2A6: FTP Indexing"],
+        "C2: Sensitive Directories": ["C2A1: Basic Index Discovery", "C2A2: Backup Directories", "C2A3: Config Access", "C2A4: Admin Folders", "C2A5: DCIM / Media", "C2A6: FTP Indexing"],
         "C3: Vulnerable Server Software": ["C3A1: Apache Server Status", "C3A2: WordPress Config", "C3A3: Joomla Setup", "C3A4: Outdated PHP", "C3A5: Envoy Proxy Info"],
         "C4: Vulnerable Files": ["C4A1: SQLi Entry Point", "C4A2: Error Leakage", "C4A3: Open Redirects", "C4A4: XSS Target", "C4A5: CGI Scripts"],
         "C5: Pages Containing Login Portals": ["C5A1: Generic Admin", "C5A2: Okta/SSO Portals", "C5A3: Cpanel Access", "C5A4: Router Logins", "C5A5: Jenkins Dashboards"],
@@ -140,35 +96,29 @@ def main():
         "C10: Identity & Access Management (IAM)": ["C10A1: VPN Client Configs", "C10A2: Active Directory Info", "C10A3: SSH Private Keys", "C10A4: Auth0/JWT Configs"],
         "GHDB: External Database": ["Search GHDB by Keyword"]
     }
-    categories = list(DATA.keys())
-    expanded = {cat: False for cat in categories}
-    current_selection = 0
+    cats = list(DATA.keys()); exp = {cat: False for cat in cats}; sel = 0
     while True:
-        display_list = []
-        for cat in categories:
-            display_list.append(('cat', cat))
-            if expanded[cat]:
-                for t in DATA[cat]: display_list.append(('type', t))
-        current_selection = max(0, min(current_selection, len(display_list) - 1))
+        disp = []
+        for c in cats:
+            disp.append(('cat', c))
+            if exp[c]:
+                for t in DATA[c]: disp.append(('type', t))
         print("\033[H\033[J", end="")
-        print(f"{HEADER}{BOLD}=== GOOGLEDOOKIE: OSINT FRAMEWORK ==={ENDC}\n")
-        for i, (kind, name) in enumerate(display_list):
-            prefix = " > " if kind == 'cat' else "   └─ "
-            marker = (" [▼]" if expanded[name] else " [▶]") if kind == 'cat' else ""
-            style = HIGHLIGHT if i == current_selection else (BOLD + ENDC if kind == 'cat' else SUB)
-            print(f"{style}{prefix}{name}{marker}{ENDC}")
-        print(f"\n{BOLD}[Arrows to Move, Enter to Select, Q to Quit]{ENDC}")
+        print(f"{H}{B}=== GOOGLEDOOKIE: OSINT FRAMEWORK ==={END}\n")
+        for i, (k, n) in enumerate(disp):
+            p = " > " if k == 'cat' else "   └─ "
+            m = (" [▼]" if exp[n] else " [▶]") if k == 'cat' else ""
+            s = HI if i == sel else (B + END if k == 'cat' else SUB)
+            print(f"{s}{p}{n}{m}{END}")
+        print(f"\n{B}[Arrows to Move, Enter to Select, Q to Quit]{END}")
         key = get_char()
-        if key == '\x1b[A': current_selection = (current_selection - 1) % len(display_list)
-        elif key == '\x1b[B': current_selection = (current_selection + 1) % len(display_list)
+        if key == '\x1b[A': sel = (sel - 1) % len(disp)
+        elif key == '\x1b[B': sel = (sel + 1) % len(disp)
         elif key == '\r':
-            kind, name = display_list[current_selection]
-            if kind == 'cat': expanded[name] = not expanded[name]
-            elif name == "C1A1: Log Files (Passwords)": handle_c1a1()
-            elif name == "Search GHDB by Keyword": search_ghdb_keyword()
-            else:
-                print(f"\n\n{HIGHLIGHT}Targeting: {name}{ENDC}")
-                time.sleep(1)
+            k, n = disp[sel]
+            if k == 'cat': exp[n] = not exp[n]
+            elif n == "C1A1: Log Files (Passwords)": handle_c1a1()
+            elif n == "Search GHDB by Keyword": pass
         elif key.lower() == 'q': sys.exit()
 
 if __name__ == "__main__": main()
